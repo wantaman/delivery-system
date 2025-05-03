@@ -7,6 +7,9 @@ export default defineConfig({
   define: {
     global: 'window',
   },
+  optimizeDeps: {
+    include: ['react-bootstrap', 'bootstrap']
+  },
   server: {
     port: 5002,
     host: true
