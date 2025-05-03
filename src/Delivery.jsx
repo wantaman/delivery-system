@@ -40,7 +40,11 @@ const driverIcon = new Icon({
 });
 
 export default function Delivery() {
-  const [locations, setLocations] = useState({});
+  const [locations, setLocations] = useState({
+    id: null,
+    name: "",
+    shipping: []
+  });
   const [currentLocation, setCurrentLocation] = useState(null);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [token, setToken] = useState(null);
@@ -62,8 +66,8 @@ export default function Delivery() {
 
 
     const client = new Client({
-      // brokerURL: "ws://localhost:9001/ws",
-      brokerURL: "wss://96.9.77.143:7001/loar-tinh/ws",
+      brokerURL: "ws://localhost:9001/ws",
+      // brokerURL: "wss://96.9.77.143:7001/loar-tinh/ws",
       reconnectDelay: 5000,
     });
 
@@ -74,19 +78,18 @@ export default function Delivery() {
         try {
           const shippingData = JSON.parse(message.body);
           setLocations(prev => {
-            const updatedShipping = prev.shipping.map(item => 
-              item.trackingNumber === shippingData.trackingNumber ? { ...item, ...shippingData } : item
-            );
-            
-            // If shipping data is new, push it to the array
-            if (!updatedShipping.find(item => item.trackingNumber === shippingData.trackingNumber)) {
-              updatedShipping.push(shippingData);
+            const existing = prev.shipping || [];
+            const index = existing.findIndex(item => item.trackingNumber === shippingData.trackingNumber);
+
+            let updatedShipping;
+            if (index !== -1) {
+              updatedShipping = [...existing];
+              updatedShipping[index] = { ...existing[index], ...shippingData };
+            } else {
+              updatedShipping = [...existing, shippingData];
             }
-            
-            return {
-              ...prev,
-              shipping: updatedShipping
-            };
+
+            return { ...prev, shipping: updatedShipping };
           });
           // setLocations(prev => ({
           //   ...prev,
@@ -157,6 +160,23 @@ export default function Delivery() {
         timestamp: update.timestamp || Date.now()
       }
     }));
+
+    setDriverPositions(prev => ({
+      ...prev,
+      [update.trackingNumber]: newPosition
+    }));
+  
+    // If this is the currently selected route, update its 'from' point
+    setSelectedRoute(prev => {
+      if (prev?.trackingNumber === update.trackingNumber) {
+        return {
+          ...prev,
+          from: { lat: update.latitude, lng: update.longitude },
+          timestamp: Date.now() // Optional: reset timestamp to trigger re-render
+        };
+      }
+      return prev;
+    });
   }, []);
 
   const handleCurrentLocation = () => {
@@ -180,8 +200,8 @@ export default function Delivery() {
   const startDeliveryTracking = async (trackingNumber) => {
     try {
       await axios.post(
-        // `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
-        `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
+        `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
+        // `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -226,8 +246,8 @@ export default function Delivery() {
       }
       
       await axios.patch(
-        // `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
-        `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
+        `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
+        // `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
 
         {},
         { 
@@ -302,11 +322,17 @@ export default function Delivery() {
     const fetchShippings = async () => {
       try {
         const response = await axios.get(
-          // `http://localhost:9001/api/deliveries/${userId}/shipping`,
-          `https://96.9.77.143:7001/loar-tinh/api/deliveries/${userId}/shipping`,
+          `http://localhost:9001/api/deliveries/${userId}/shipping`,
+          // `https://96.9.77.143:7001/loar-tinh/api/deliveries/${userId}/shipping`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setLocations(response.data.data);
+        const data = response.data.data
+        setLocations({
+          id: data.id,
+          name: data.name,
+          shipping: data.shipping || []
+        });
+        
       } catch (error) {
         console.error("Error fetching shipping data:", error);
       }

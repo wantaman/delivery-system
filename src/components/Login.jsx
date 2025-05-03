@@ -24,8 +24,8 @@ export default function Login({ onLogin }) {
 
             const credentials = btoa(`${email}:${password}`);
             const response = await axios.post(
-                // 'http://localhost:9001/api/auth/login',
-                'https://96.9.77.143:7001/loar-tinh/api/auth/login',
+                'http://localhost:9001/api/auth/login',
+                // 'https://96.9.77.143:7001/loar-tinh/api/auth/login',
                 { email, password }, {
                 headers: {
                     'Content-Type': 'application/json',

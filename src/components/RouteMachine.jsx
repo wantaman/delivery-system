@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useImperativeHandle, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet-routing-machine';
 import { useMap } from 'react-leaflet';
@@ -24,10 +24,10 @@ export default function RouteMachine({ from, to ,waypoints = []}) {
     const routingControl = L.Routing.control({
       waypoints: allWaypoints,
       routeWhileDragging: false,
-      showAlternatives: false,
       addWaypoints: false,
       draggableWaypoints: false,
-      fitSelectedRoutes: 'smart',
+      fitSelectedRoutes: true,
+      showAlternatives: false,
       lineOptions: {
         styles: [
           {
@@ -107,9 +107,11 @@ export default function RouteMachine({ from, to ,waypoints = []}) {
     return () => {
       if (routingControlRef.current) {
         map.removeControl(routingControlRef.current);
+        routingControlRef.current = null;
       }
       if (map._routeInfoControl) {
         map.removeControl(map._routeInfoControl);
+        map._routeInfoControl = null;
       }
     };
 
