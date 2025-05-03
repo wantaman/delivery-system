@@ -8,6 +8,7 @@ import axios from 'axios';
 import Login from './components/Login';
 import RouteMachine from './components/RouteMachine';
 import { Button } from 'react-bootstrap';
+import Swal from 'sweetalert2';
 
 
 const redIcon = new Icon({
@@ -91,10 +92,6 @@ export default function Delivery() {
 
             return { ...prev, shipping: updatedShipping };
           });
-          // setLocations(prev => ({
-          //   ...prev,
-          //   shipping: [...(prev.shipping || []), shippingData]
-          // }));
         } catch (error) {
           console.error("Error processing WebSocket message:", error);
         }
@@ -116,11 +113,12 @@ export default function Delivery() {
       if (watchId) {
         navigator.geolocation.clearWatch(watchId);
       }
-    };    
+    };
   }, []);
 
   useEffect(() => {
-    if (!isStompConnected|| !locations?.shipping) return;
+    if (!isStompConnected || !locations?.shipping) return;
+
 
     locations.shipping.forEach(ship => {
       if (ship.status === 'IN_TRANSIT') {
@@ -129,7 +127,40 @@ export default function Delivery() {
           (message) => handleLocationUpdate(JSON.parse(message.body))
         );
       }
+
+      // Add status updates subscription
+      stompClientRef.current.subscribe(
+        `/topic/delivery/${ship.trackingNumber}/status`,
+        (message) => {
+          const update = JSON.parse(message.body);
+          setLocations(prev => ({
+            ...prev,
+            shipping: prev.shipping.map(item =>
+              item.trackingNumber === update.trackingNumber
+                ? { ...item, status: update.status }
+                : item
+            )
+          }));
+        }
+      );
     });
+
+    // General updates subscription
+    stompClientRef.current.subscribe(
+      '/topic/delivery/updates',
+      (message) => {
+        const update = JSON.parse(message.body);
+        setLocations(prev => ({
+          ...prev,
+          shipping: prev.shipping.map(item =>
+            item.trackingNumber === update.trackingNumber
+              ? { ...item, status: update.status }
+              : item
+          )
+        }));
+      }
+    );
+
   }, [locations, isStompConnected]);
 
 
@@ -137,15 +168,6 @@ export default function Delivery() {
     const savedLocation = localStorage.getItem('currentLocation');
     if (savedLocation) {
       setCurrentLocation(JSON.parse(savedLocation));
-    }
-    const savedRoute = localStorage.getItem('selectedRoute');
-    if (savedRoute) {
-      const route = JSON.parse(savedRoute);
-      if (Date.now() - route.timestamp < 3600000) {
-        setSelectedRoute(route);
-      } else {
-        localStorage.removeItem('selectedRoute');
-      }
     }
   }, []);
 
@@ -165,14 +187,13 @@ export default function Delivery() {
       ...prev,
       [update.trackingNumber]: newPosition
     }));
-  
+
     // If this is the currently selected route, update its 'from' point
     setSelectedRoute(prev => {
       if (prev?.trackingNumber === update.trackingNumber) {
         return {
           ...prev,
-          from: { lat: update.latitude, lng: update.longitude },
-          timestamp: Date.now() // Optional: reset timestamp to trigger re-render
+          from: { lat: update.latitude, lng: update.longitude }
         };
       }
       return prev;
@@ -191,21 +212,52 @@ export default function Delivery() {
         (error) => {
           console.error('Error getting location:', error);
         },
-        { enableHighAccuracy: true, timeout: 5000 ,  maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
       );
       setWatchId(id);
     }
   }
-  
+
   const startDeliveryTracking = async (trackingNumber) => {
     try {
       await axios.post(
         // `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
-        `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
+          `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      setLocations(prev => ({
+        ...prev,
+        shipping: prev.shipping.map(item =>
+          item.trackingNumber === trackingNumber
+            ? { ...item, status: 'IN_TRANSIT' }
+            : item
+        )
+      }));
       setIsTracking(true);
+
+      // Subscribe to updates
+      if (stompClientRef.current && isStompConnected) {
+        stompClientRef.current.subscribe(
+          `/topic/delivery/${trackingNumber}/location`,
+          (message) => handleLocationUpdate(JSON.parse(message.body))
+        );
+
+        stompClientRef.current.subscribe(
+          `/topic/delivery/${trackingNumber}/status`,
+          (message) => {
+            const update = JSON.parse(message.body);
+            setLocations(prev => ({
+              ...prev,
+              shipping: prev.shipping.map(item =>
+                item.trackingNumber === update.trackingNumber
+                  ? { ...item, status: update.status }
+                  : item
+              )
+            }));
+          }
+        );
+      }
 
       if (stompClientRef.current && isStompConnected) {
         stompClientRef.current.subscribe(
@@ -213,8 +265,8 @@ export default function Delivery() {
           (message) => handleLocationUpdate(JSON.parse(message.body))
         );
       }
-  
-      
+
+
       if (navigator.geolocation) {
         const id = navigator.geolocation.watchPosition(
           (position) => {
@@ -224,13 +276,25 @@ export default function Delivery() {
               'currentLocation',
               JSON.stringify({ lat: latitude, lng: longitude })
             );
+
+            // Send location updates to backend
+            if (stompClientRef.current && isStompConnected) {
+              stompClientRef.current.publish({
+                destination: '/app/delivery/location',
+                body: JSON.stringify({
+                  trackingNumber,
+                  longitude: longitude.toString(),
+                  latitude: latitude.toString(),
+                  userId
+                })
+              });
+            }
           },
           (error) => {
             console.error("Geolocation error:", error);
           },
           { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
         );
-  
         setWatchId(id);
       }
     } catch (error) {
@@ -241,21 +305,20 @@ export default function Delivery() {
   const markDeliveryArrived = async (trackingNumber) => {
     try {
       if (!currentLocation) {
-        alert('Please enable location services first');
         return;
       }
-      
+
       await axios.patch(
         // `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
         `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
 
         {},
-        { 
+        {
           params: {
             longitude: currentLocation.lng.toString(),
             latitude: currentLocation.lat.toString()
           },
-          headers: { Authorization: `Bearer ${token}` } 
+          headers: { Authorization: `Bearer ${token}` }
         }
       );
       setIsTracking(false);
@@ -270,16 +333,22 @@ export default function Delivery() {
         localStorage.removeItem('selectedRoute');
       }
 
-       // Update marker status to "DELIVERED"
+      // Update marker status to "DELIVERED"
       setLocations(prev => ({
         ...prev,
-        shipping: prev.shipping.map(item => 
+        shipping: prev.shipping.map(item =>
           item.trackingNumber === trackingNumber ? { ...item, status: 'DELIVERED' } : item
         )
       }));
 
     } catch (error) {
-      console.error("Error marking delivery as arrived:", error);
+      console.error("Full error object:", error); // Log entire error object
+
+      Swal.fire({
+        title: 'Error',
+        text: error.response?.data?.message || 'Failed to mark delivery as arrived',
+        icon: 'error'
+      });
     }
   };
 
@@ -287,26 +356,23 @@ export default function Delivery() {
     if (!currentLocation) {
       return;
     }
-  
+
     if (selectedRoute?.trackingNumber === delivery.trackingNumber) {
       setSelectedRoute(null);
-      localStorage.removeItem('selectedRoute');
       return;
     }
-  
+
     const driverPos = driverPositions[delivery.trackingNumber];
-    
+
     // Set the new route
     const route = {
       from: driverPos || { lat, lng },
       to: currentLocation,
       trackingNumber: delivery.trackingNumber,
       status: delivery.status,
-      timestamp: Date.now() 
     };
-  
+
     setSelectedRoute(route)
-    localStorage.setItem('selectedRoute', JSON.stringify(route));
   }, [currentLocation, driverPositions, selectedRoute]);
 
   const handleLogin = (newToken, id) => {
@@ -332,7 +398,7 @@ export default function Delivery() {
           name: data.name,
           shipping: data.shipping || []
         });
-        
+
       } catch (error) {
         console.error("Error fetching shipping data:", error);
       }
@@ -386,12 +452,13 @@ export default function Delivery() {
             from={selectedRoute.from}
             to={selectedRoute.to}
             waypoints={selectedRoute.waypoints || []}
-            
+
           />
         )}
 
-        {locations?.shipping?.
-          filter((location) => location.location && location.location.latitude && location.location.longitude).map(s => {
+        {locations?.shipping?.filter((location) =>
+          location.location && location.location.latitude && location.location.longitude
+        ).map(s => {
           const lat = parseFloat(s.location.latitude);
           const lng = parseFloat(s.location.longitude);
           let icon = redIcon;
@@ -411,7 +478,7 @@ export default function Delivery() {
                 Status: {s.status}<br />
                 City: {s.location.city}<br />
                 {s.status === 'PENDING' && (
-                  <Button 
+                  <Button
                     variant="primary"
                     onClick={() => startDeliveryTracking(s.trackingNumber)}
                     disabled={!isStompConnected || isTracking}
@@ -421,18 +488,18 @@ export default function Delivery() {
                 )}
 
                 {s.status === 'IN_TRANSIT' && (
-                  <Button 
+                  <Button
                     variant="success"
                     onClick={() => markDeliveryArrived(s.trackingNumber)}
-                    disabled={!isTracking}
                   >
-                    Mark as Arrived
+                    Arrived
                   </Button>
                 )}
               </Popup>
             </Marker>
           );
         })}
+
 
         {/* Display driver markers */}
         {Object.entries(driverPositions).map(([trackingNumber, position]) => (
