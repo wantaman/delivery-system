@@ -66,8 +66,8 @@ export default function Delivery() {
 
 
     const client = new Client({
-      brokerURL: "ws://localhost:9001/ws",
-      // brokerURL: "wss://96.9.77.143:7001/loar-tinh/ws",
+      // brokerURL: "ws://localhost:9001/ws",
+      brokerURL: "wss://96.9.77.143:7001/loar-tinh/ws",
       reconnectDelay: 5000,
     });
 
@@ -200,8 +200,8 @@ export default function Delivery() {
   const startDeliveryTracking = async (trackingNumber) => {
     try {
       await axios.post(
-        `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
-        // `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
+        // `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
+        `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -246,8 +246,8 @@ export default function Delivery() {
       }
       
       await axios.patch(
-        `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
-        // `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
+        // `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
+        `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/mark-arrived`,
 
         {},
         { 
@@ -322,8 +322,8 @@ export default function Delivery() {
     const fetchShippings = async () => {
       try {
         const response = await axios.get(
-          `http://localhost:9001/api/deliveries/${userId}/shipping`,
-          // `https://96.9.77.143:7001/loar-tinh/api/deliveries/${userId}/shipping`,
+          // `http://localhost:9001/api/deliveries/${userId}/shipping`,
+          `https://96.9.77.143:7001/loar-tinh/api/deliveries/${userId}/shipping`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const data = response.data.data
