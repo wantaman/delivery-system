@@ -191,7 +191,7 @@ export default function Delivery() {
         (error) => {
           console.error('Error getting location:', error);
         },
-        { enableHighAccuracy: true, maximumAge: 10000 }
+        { enableHighAccuracy: true, timeout: 5000 ,  maximumAge: 0 }
       );
       setWatchId(id);
     }
@@ -390,10 +390,8 @@ export default function Delivery() {
           />
         )}
 
-        {locations?.shipping?.map(s => {
-          if (!s.location || !s.location.latitude || !s.location.longitude) {
-            return null; 
-          }
+        {locations?.shipping?.
+          filter((location) => location.location && location.location.latitude && location.location.longitude).map(s => {
           const lat = parseFloat(s.location.latitude);
           const lng = parseFloat(s.location.longitude);
           let icon = redIcon;
