@@ -128,7 +128,6 @@ export default function Delivery() {
         );
       }
 
-      // Add status updates subscription
       stompClientRef.current.subscribe(
         `/topic/delivery/${ship.trackingNumber}/status`,
         (message) => {
@@ -162,15 +161,13 @@ export default function Delivery() {
     );
 
   }, [locations, isStompConnected]);
-
-
+  
   useEffect(() => {
     const savedLocation = localStorage.getItem('currentLocation');
     if (savedLocation) {
       setCurrentLocation(JSON.parse(savedLocation));
     }
   }, []);
-
 
   const handleLocationUpdate = useCallback((update) => {
     setDriverPositions(prev => ({
@@ -183,12 +180,6 @@ export default function Delivery() {
       }
     }));
 
-    setDriverPositions(prev => ({
-      ...prev,
-      [update.trackingNumber]: newPosition
-    }));
-
-    // If this is the currently selected route, update its 'from' point
     setSelectedRoute(prev => {
       if (prev?.trackingNumber === update.trackingNumber) {
         return {
@@ -222,7 +213,7 @@ export default function Delivery() {
     try {
       await axios.post(
         // `http://localhost:9001/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
-          `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
+        `https://96.9.77.143:7001/loar-tinh/api/shippings/tracking/order/${trackingNumber}/${userId}/start`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -257,45 +248,43 @@ export default function Delivery() {
             }));
           }
         );
-      }
 
-      if (stompClientRef.current && isStompConnected) {
-        stompClientRef.current.subscribe(
-          `/topic/delivery/${trackingNumber}/location`,
-          (message) => handleLocationUpdate(JSON.parse(message.body))
-        );
-      }
-
-
-      if (navigator.geolocation) {
-        const id = navigator.geolocation.watchPosition(
-          (position) => {
-            const { latitude, longitude } = position.coords;
-            setCurrentLocation({ lat: latitude, lng: longitude });
-            localStorage.setItem(
-              'currentLocation',
-              JSON.stringify({ lat: latitude, lng: longitude })
-            );
-
-            // Send location updates to backend
-            if (stompClientRef.current && isStompConnected) {
-              stompClientRef.current.publish({
-                destination: '/app/delivery/location',
-                body: JSON.stringify({
-                  trackingNumber,
-                  longitude: longitude.toString(),
-                  latitude: latitude.toString(),
-                  userId
-                })
-              });
+        if (navigator.geolocation) {
+          const id = navigator.geolocation.watchPosition(
+            (position) => {
+              const { latitude, longitude } = position.coords;
+              setCurrentLocation({ lat: latitude, lng: longitude });
+              localStorage.setItem(
+                'currentLocation',
+                JSON.stringify({ lat: latitude, lng: longitude })
+              );
+  
+              // Send location updates to backend
+              if (stompClientRef.current && isStompConnected) {
+                stompClientRef.current.publish({
+                  destination: "/topic/delivery/location",
+                  body: JSON.stringify({
+                    trackingNumber,
+                    longitude: longitude.toString(),
+                    latitude: latitude.toString(),
+                    userId,
+                    status: 'IN_TRANSIT',
+                    speed: position.coords.speed || 0,
+                    accuracy: position.coords.accuracy
+                  })
+                });
+                
+              }
+            },
+            (error) => console.error("Geolocation error:", error),
+            { 
+              enableHighAccuracy: true,
+              maximumAge: 0,
+              timeout: 5000
             }
-          },
-          (error) => {
-            console.error("Geolocation error:", error);
-          },
-          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-        );
-        setWatchId(id);
+          );
+          setWatchId(id);
+        }
       }
     } catch (error) {
       console.error("Error starting delivery tracking:", error);
